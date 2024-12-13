@@ -11,9 +11,9 @@ In this report, we explore a dataset containing various media-related variables 
 ## Data Visualizations
 ### **Figure 1**
 
-![Figure 1](/mnt/c/IIT_M/Diploma Courses/TDS/Project2/key_column_exploration_chart.png)
+![Figure 1](key_column_exploration_chart.png)
 
 ### **Figure 2**
 
-![Figure 2](/mnt/c/IIT_M/Diploma Courses/TDS/Project2/dataset_analysis_chart.png)
+![Figure 2](dataset_analysis_chart.png)
 
