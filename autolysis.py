@@ -52,8 +52,35 @@ if not AIPROXY_TOKEN:
 
 
 
-# Function to generate the README file
+
 def generate_readme(story, charts):
+    """
+    Generates a README file content by combining a given story and a list of charts.
+
+    This function takes a descriptive story and a list of charts (each chart represented 
+    as a tuple containing the chart title and the chart file path or URL) and returns a 
+    formatted string suitable for a README file. The story is included as the main content, 
+    followed by a section for data visualizations, where each chart is presented with a title 
+    and an embedded image.
+
+    Parameters:
+    - story (str): A narrative or explanation that serves as the main content of the README.
+    - charts (list of tuples): A list of charts where each chart is represented as a tuple.
+      The first element of the tuple is the chart title (str), and the second element is the
+      chart's file path or URL (str) to the chart image.
+
+    Returns:
+    - str: A string formatted as a README file, containing the story and visualizations.
+    
+    Example:
+    --------
+    story = "This project involves data analysis of XYZ."
+    charts = [("Chart 1", "charts/chart1.png"), ("Chart 2", "charts/chart2.png")]
+    
+    readme = generate_readme(story, charts)
+    print(readme)
+    """
+
     readme = story
 
     #Include Visuals
@@ -64,7 +91,7 @@ def generate_readme(story, charts):
 
     return readme
 
-# This function asks the LLM to
+
 def generate_story(AIPROXY_TOKEN,
                     URL,
                     dataset_filename,
@@ -72,6 +99,52 @@ def generate_story(AIPROXY_TOKEN,
                     key_column_exploration_result,
                     dataset_analysis_result) :
 
+    """
+    Generates a markdown story from a dataset analysis, leveraging a language model (LLM).
+
+    This function interacts with an AI API (such as OpenAI's GPT) to generate a cohesive and structured story 
+    about a dataset, based on the dataset's description, key column exploration results, and analysis results. 
+    The generated story is formatted as a markdown file suitable for inclusion in a README. It narrates the dataset 
+    analysis in a story-like format with sections dedicated to the dataset overview, analysis methods, key insights, 
+    and actionable recommendations.
+
+    Parameters:
+    - AIPROXY_TOKEN (str): The authentication token for API access.
+    - URL (str): The endpoint URL for the API request.
+    - dataset_filename (str): The name of the dataset file being analyzed.
+    - dataset_description (str): A description of the dataset that provides context.
+    - key_column_exploration_result (str): Results from the exploration of the key column in the dataset.
+    - dataset_analysis_result (str): Results from any additional dataset analysis, including statistical tests.
+
+    Returns:
+    - str: A markdown formatted string that tells a story about the dataset, its analysis, and insights.
+
+    Example:
+    --------
+    AIPROXY_TOKEN = "your-token-here"
+    URL = "https://api.example.com"
+    dataset_filename = "data.csv"
+    dataset_description = "This dataset contains information about sales and customer data."
+    key_column_exploration_result = "The key column, 'Product Category', shows significant correlation with sales."
+    dataset_analysis_result = "The 1-way ANOVA results show that 'Product Category' significantly affects sales."
+
+    markdown_story = generate_story(AIPROXY_TOKEN, URL, dataset_filename, dataset_description, 
+                                    key_column_exploration_result, dataset_analysis_result)
+
+    print(markdown_story)
+    
+    Notes:
+    ------
+    - The AI model will generate a story in a structured, narrative format divided into chapters. 
+      These chapters will cover the dataset's overview, analysis methods, key insights, and actionable recommendations.
+    - The function sends a POST request to the API with the necessary parameters, including the dataset information 
+      and analysis results, to generate the markdown content.
+    - Charts and figures (Figure 1, Figure 2) are referenced in the generated story but will not be included 
+      in the markdown content directly; they will be inserted later by an automated script.
+    - The generated markdown content will be approximately 1500 tokens long and should be concise, actionable, 
+      and easy to understand.
+    """
+        
     # Set the headers with the token
     headers = {
         "Authorization": f"Bearer {AIPROXY_TOKEN}",
@@ -86,78 +159,69 @@ def generate_story(AIPROXY_TOKEN,
     behaviour = """You are a data analyst who produces intriguing story-like narratives about datasets whereby the narratives have sequential flow and cohesion.
     Your task is to produce a story that highlights key insights and patterns discovered from the dataset summaries, analysis results and charts provided to you."""
 
-    prompt = f"""A dataset has been processed to uncover patterns and key insights. The following analysis procedure has been followed:
-
-    \\
-    1. **Dataset description** was generated.
-    2. The dataset description is passed to a language model (LLM) to select an impactful column.
-    3. Based on whether the selected column is numerical or categorical, appropriate analysis (correlation or 1-way ANOVA) has been performed.
-    4. **Preprocessing steps** are carried out, including handling missing values, outliers, and imputations.
-    5. **Key column exploration** and additional dataset analysis are completed, including generating relevant analysis results and charts.
-    \\
-
-    Your Task : Generate an **interesting, cohesive story** for a **markdown** file. The story should cover :
+    prompt = f"""A dataset has been analyzed to uncover patterns, key insights, and actionable recommendations. Based on this analysis, generate a **markdown** file that narrates a **cohesive and engaging story** about the dataset while maintaining a professional and subtle tone. Adapt your narrative based on the dataset's complexity and the insights discovered. Your task involves:
 
     ---
 
-    ### 1. **Dataset Overview**:
-    - **Section Title (Centered)**: "Chapter One : The Beginning"
-    - **Section Sub-Title (Centered)**: "Mysterious Mr.Dataset"
-    - Narrate about the dataset’s key features (e.g., rows, columns, interesting patterns).
-    - Use **bullet points** for clarity.
+    ### **1. Dataset Overview**
+    - **Section Title (Centered):** "Chapter One: The Beginning"
+    - **Section Sub-Title (Centered):** "Mysterious Mr. Dataset"
+    - Describe the dataset's structure, size, and unique characteristics. 
+    - Summarize key features using **bullet points** for clarity.
+    - Focus on making the dataset’s description intriguing but concise.
 
-    ### 2. **Analysis Methods**:
-    - **Section Title (Centered)**: "Chapter Two : The Plot Thickens"
-    - **Section Sub-Title (Centered)**: "Detective Mr.Analyst"
-    - Explain the analysis performed: whether the key column is **numerical** or **categorical**, and the methods used (e.g., **correlation** or **1-way ANOVA**).
-    - Briefly describe any **preprocessing steps** taken.
+    ### **2. Analysis Methods**
+    - **Section Title (Centered):** "Chapter Two: The Plot Thickens"
+    - **Section Sub-Title (Centered):** "Detective Mr. Analyst"
+    - Outline the steps taken to explore and analyze the dataset. 
+    - Clearly explain the choice of methods (e.g., correlation, ANOVA) for both **numerical** and **categorical** data.
+    - Highlight preprocessing steps and their importance for accurate analysis.
 
-    ### 3. **Key Insights and Patterns**:
-    - **Section Title (Centered)**: "Chapter Three : The Revelation"
-    - **Section Sub-Title (Centered)**: "Omnipotent Patterns"
-    - Highlight the most important findings.
-    - Use **bullet points** and reference charts if relevant.
+    ### **3. Key Insights and Patterns**
+    - **Section Title (Centered):** "Chapter Three: The Revelation"
+    - **Section Sub-Title (Centered):** "Omnipotent Patterns"
+    - Narrate the most significant patterns and trends revealed by the analysis.
+    - Present **bullet points** of the key findings and reference visualizations as necessary (e.g., "See Figure 1").
+    - Make logical connections between insights and dataset features.
 
-    ### 4. **Implications and Actions**:
-    - **Section Title (Centered)**: "Chapter Four : The Deed that Must be Done"
-    - **Section Sub-Title (Centered)**: "The Act"
-    - Based on the insights, provide **clear, actionable recommendations**.
-    - List actions in **bullet points**.
-
-    ---
-
-    ### Formatting Instructions:
-    - Note : Narrate like a story-teller and present like a analyst.
-    - Note : The tone of the story is strictly non-dramatic.The tone is serious and subtle.
-    - Note : The linguistic style of the story is also strictly non-dramatic. It is serious,subtle,to-the-point and concise.
-    - Note : The story's genre is adventure-thriller-mystery.
-    - The protaganist in the story is *Mr.Analyst*.
-    - The various analysis techniques and dataset insights/patterns are the supporting cast.
-    - *Mr.Dataset* can be in a positive or negative role.
-    - Use **clear headers** and **bullet points** for key details.
-    - **Bold** or *italicize* key terms for emphasis.
-    - Ensure the README is well-organized, with a logical flow.
-    - Reference charts with descriptions like "As shown below in **Figure 1**".
-    
+    ### **4. Implications and Actions**
+    - **Section Title (Centered):** "Chapter Four: The Deed That Must Be Done"
+    - **Section Sub-Title (Centered):** "The Act"
+    - Propose **actionable recommendations** based on the insights derived.
+    - Where insights are limited, suggest further analysis or questions for exploration.
+    - Ensure recommendations are concise, impactful, and relevant.
 
     ---
 
-    ### Data Information:
-    - **Dataset filename**: `{dataset_filename}`
-    - **Dataset description**: `{dataset_description}`
-    - **Key column exploration result**: `{key_column_exploration_result}`
+    ### **Tone and Style Guidelines**
+    1. Use a **serious and analytical tone** with a subtle sense of intrigue.
+    2. Maintain **logical flow and cohesion** throughout the story.
+    3. The narrative should adapt to the dataset’s complexity:
+    - For rich datasets: Provide detailed insights and specific recommendations.
+    - For sparse datasets: Focus on general observations and suggest follow-up analyses.
+    4. Include clear headers, subheaders, and **bullet points** for clarity and organization.
+    5. Avoid over-reliance on predefined storytelling templates and focus on tailoring the story to the dataset provided.
+
+    ---
+
+    ### **Dataset Information**
+    - **Dataset filename:** `{dataset_filename}`
+    - **Dataset description:** `{dataset_description}`
+    - **Key column exploration result:** `{key_column_exploration_result}`
+    - **Dataset analysis result:** `{dataset_analysis_result}`
     - **Key column exploration chart**: \\ Figure 1\\
-    - **Dataset analysis result**: `{dataset_analysis_result}`
     - **Dataset analysis chart**: \\ Figure 2 \\
+    ---
+
+    ### **Critical Final Instructions**
+    1. Your response must be **markdown-formatted content only**; no additional explanations or placeholders.
+    2. The markdown must be well-structured and concise (~1500 tokens).
+    3. Charts will be referenced as **Figure 1** or **Figure 2** but will not include links. The automated script will add these.
+    4. Ensure the narrative is professional and subtle, avoiding dramatic language.
 
     ---
 
-    **Critical Final Instructions**:
-    1. Your response should only be the content of the markdown file itself, because your response will be utilized by an automated script for further processing and creation of a 'README.md' file, otherwise the script will break.
-    2. The markdown content should be **well-structured, concise**, and **actionable** presented like an intriguing story narrated by an analyst.
-    3. Charts of Figure 1 and Figure 2 would be visible in the Data Visualizations section below and the chart links will be added by the automated script after processing. **Do not add chart links in the markdown content.
-    4. Do not reference the automated script in the markdown content.
-    4. Your response should be approximately 1500 tokens. 
+    **Remember**: Your task is to narrate an insightful and engaging story about the dataset, seamlessly linking its description, analysis, and actionable recommendations.
     """
 
     messages = [
@@ -184,7 +248,6 @@ def generate_story(AIPROXY_TOKEN,
     else:
         return None
 
-    #return {'col_type': 'numerical', 'col_name': 'overall'}
 
 
 
@@ -233,7 +296,6 @@ def plot_anova_result(dataset_analysis_result, key_column):
       with F-statistic and p-value for each factor.
     - key_column: The categorical variable used for performing ANOVA.
     """
-
     # Flatten the ANOVA results for plotting
     plot_data = []
     for column, stats in {**dataset_analysis_result['1-Way ANOVA Analysis Result']['Significant Columns'], **dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns']}.items():
@@ -254,12 +316,17 @@ def plot_anova_result(dataset_analysis_result, key_column):
 
     # Create the plot
     plt.figure(figsize=figsize)
-    ax = sns.barplot(x='F-statistic', y='Column', hue='Significance', data=df, palette={'Significant': 'green', 'Non-significant': 'gray'}, orient='h')
+    
+    # Improved color palette for better contrast
+    palette = {'Significant': '#1f77b4', 'Non-significant': '#ff7f0e'}
+
+    # Create the bar plot
+    ax = sns.barplot(x='F-statistic', y='Column', hue='Significance', data=df, palette=palette, orient='h')
 
     # Title and labels
-    plt.title(f"F-statistics for 1-way ANOVA with '{key_column}' selected as Grouping Column")
-    plt.xlabel(f"F-statistic Values for Columns (w.r.t. '{key_column}' column)")
-    plt.ylabel('Columns')
+    plt.title(f"F-statistics for 1-way ANOVA with '{key_column}' selected as Grouping Column", fontsize=16)
+    plt.xlabel(f"F-statistic Values for Columns (w.r.t. '{key_column}' column)", fontsize=12)
+    plt.ylabel('Columns', fontsize=12)
 
     # Ensure the legend always shows both 'Significant' and 'Non-significant'
     handles, labels = ax.get_legend_handles_labels()
@@ -267,12 +334,12 @@ def plot_anova_result(dataset_analysis_result, key_column):
     # Manually add a legend handle for 'Non-significant' if it's missing
     if 'Non-significant' not in labels:
         # Create a uniform Patch for Non-significant with the same color as the bars
-        non_significant_patch = mpatches.Patch(color='gray', label='Non-significant')
+        non_significant_patch = mpatches.Patch(color='#ff7f0e', label='Non-significant')
         handles.append(non_significant_patch)
         labels.append('Non-significant')
 
     # Set the legend with both 'Significant' and 'Non-significant'
-    ax.legend(handles, labels, title='Significance', loc='upper right')
+    ax.legend(handles, labels, title='Significance', loc='upper right', fontsize=12)
 
     # Return the current figure (to be displayed or saved later)
     return plt.gcf()  # Return the figure object
@@ -286,7 +353,6 @@ def plot_correlation_result(dataset_analysis_result, key_column):
     Parameters:
     - dataset_analysis_result: A dictionary containing categories and their corresponding correlations.
     """
-
     # Flatten the dictionary for plotting
     plot_data = []
     for category, correlations in dataset_analysis_result["Correlation Analysis Result"].items():
@@ -308,7 +374,12 @@ def plot_correlation_result(dataset_analysis_result, key_column):
 
     # Create the bar plot
     plt.figure(figsize=figsize)
-    ax = sns.barplot(x='Correlation', y='Column', hue='Category', data=df, palette='coolwarm', orient='h')
+
+    # Improved color palette for better contrast
+    palette = sns.color_palette("coolwarm", n_colors=num_categories)
+
+    # Create the bar plot
+    ax = sns.barplot(x='Correlation', y='Column', hue='Category', data=df, palette=palette, orient='h')
 
     # Title and labels
     plt.title(f"Density Plot (KDE) - Correlation Trends w.r.t. '{key_column}' column", fontsize=16)
@@ -321,7 +392,7 @@ def plot_correlation_result(dataset_analysis_result, key_column):
         ax.text(width + 0.05, p.get_y() + p.get_height() / 2, f'{width:.2f}', ha='left', va='center', color='black', fontsize=12)
 
     # Move the legend outside to avoid overlap
-    plt.legend(loc='lower left', bbox_to_anchor=(1, 1), title='Correlation Categories', fontsize=10)
+    plt.legend(loc='lower left', bbox_to_anchor=(1, 1), title='Correlation Categories', fontsize=12)
 
     # Move figtext outside the plot area
     plt.figtext(0.05, 0.95, f"Mean: {dataset_analysis_result['Additional Statistics']['Mean Correlation']} | "
@@ -330,12 +401,13 @@ def plot_correlation_result(dataset_analysis_result, key_column):
                              f"Kurtosis: {dataset_analysis_result['Additional Statistics']['Kurtosis']}",
                 fontsize=10, ha='left', va='top', bbox=dict(facecolor='white', alpha=0.7))
 
-
     # Automatically adjust the layout to avoid clipping
     plt.tight_layout()
 
     # Return the current figure object (to be displayed or saved later)
     return plt.gcf()
+
+
 
 
 
@@ -795,7 +867,7 @@ def select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description)
     data = {
         "model": "gpt-4o-mini",  # Can also use gpt-3.5-turbo
         "messages": messages,
-        "max_tokens": 25,  # Optional parameter to limit token usage
+        "max_tokens": 200,  # Optional parameter to limit token usage
         "temperature" : 0.0
     }
 
