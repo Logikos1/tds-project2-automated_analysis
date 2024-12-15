@@ -12,15 +12,13 @@
 # ]
 # ///
 
-
-
 import os
 import sys
 import pandas as pd
 import requests
 import json
 from scipy import stats
-from scipy.stats import f_oneway
+from scipy.stats import f_oneway, shapiro, levene
 from PIL import Image
 from io import BytesIO
 import matplotlib
@@ -42,11 +40,9 @@ URL = BASE_URL + "v1/chat/completions"
 
 # Get the AIPROXY token
 AIPROXY_TOKEN = os.getenv('AIPROXY_TOKEN')
-#AIPROXY_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6IjIxZjEwMDY5NTRAZHMuc3R1ZHkuaWl0bS5hYy5pbiJ9.uowN6hWuO8EJ4H37FC_luSuUnDAOJsKtM0GPa4im2yE'
 
 # Ensure the token is stripped of any leading/trailing whitespace or newline characters
 AIPROXY_TOKEN = AIPROXY_TOKEN.strip() if AIPROXY_TOKEN else None
-
 
 
 if not AIPROXY_TOKEN:
@@ -61,17 +57,20 @@ def generate_readme(story, charts):
     readme = story
 
     #Include Visuals
-    readme += "\n## Data Visualizations\n"
+    readme += "\n# Data Visualizations\n"
     for chart in charts:
         readme += f"### **{chart[0]}**\n\n"
-        readme += f"![{chart[0]}]({chart[1]})\n\n"
+        readme += f"![{chart[1]}]({chart[1]})\n\n"
 
     return readme
 
 # This function asks the LLM to
-def generate_narrative(AIPROXY_TOKEN,
-                       URL,
-                       dataset_filename ) :
+def generate_story(AIPROXY_TOKEN,
+                    URL,
+                    dataset_filename,
+                    dataset_description,
+                    key_column_exploration_result,
+                    dataset_analysis_result) :
 
     # Set the headers with the token
     headers = {
@@ -84,17 +83,81 @@ def generate_narrative(AIPROXY_TOKEN,
     # 'prompt' contains the task and rules for selecting the most impactful column in the dataset.
     # The 'messages' list is then constructed with the system's instructions and the user input prompt.
 
-    behaviour = """You are a data analyst who produces story-like reports. Your task is to return a README.md"""
+    behaviour = """You are a data analyst who produces intriguing story-like narratives about datasets whereby the narratives have sequential flow and cohesion.
+    Your task is to produce a story that highlights key insights and patterns discovered from the dataset summaries, analysis results and charts provided to you."""
 
-    prompt = f"""
+    prompt = f"""A dataset has been processed to uncover patterns and key insights. The following analysis procedure has been followed:
 
-    Your Task : --- Generate a **story** from the data and respond with a well-structured **README.md** ---
+    \\
+    1. **Dataset description** was generated.
+    2. The dataset description is passed to a language model (LLM) to select an impactful column.
+    3. Based on whether the selected column is numerical or categorical, appropriate analysis (correlation or 1-way ANOVA) has been performed.
+    4. **Preprocessing steps** are carried out, including handling missing values, outliers, and imputations.
+    5. **Key column exploration** and additional dataset analysis are completed, including generating relevant analysis results and charts.
+    \\
 
+    Your Task : Generate an **interesting, cohesive story** for a **markdown** file. The story should cover :
+
+    ---
+
+    ### 1. **Dataset Overview**:
+    - **Section Title (Centered)**: "Chapter One : The Beginning"
+    - **Section Sub-Title (Centered)**: "Mysterious Mr.Dataset"
+    - Narrate about the dataset’s key features (e.g., rows, columns, interesting patterns).
+    - Use **bullet points** for clarity.
+
+    ### 2. **Analysis Methods**:
+    - **Section Title (Centered)**: "Chapter Two : The Plot Thickens"
+    - **Section Sub-Title (Centered)**: "Detective Mr.Analyst"
+    - Explain the analysis performed: whether the key column is **numerical** or **categorical**, and the methods used (e.g., **correlation** or **1-way ANOVA**).
+    - Briefly describe any **preprocessing steps** taken.
+
+    ### 3. **Key Insights and Patterns**:
+    - **Section Title (Centered)**: "Chapter Three : The Revelation"
+    - **Section Sub-Title (Centered)**: "Omnipotent Patterns"
+    - Highlight the most important findings.
+    - Use **bullet points** and reference charts if relevant.
+
+    ### 4. **Implications and Actions**:
+    - **Section Title (Centered)**: "Chapter Four : The Deed that Must be Done"
+    - **Section Sub-Title (Centered)**: "The Act"
+    - Based on the insights, provide **clear, actionable recommendations**.
+    - List actions in **bullet points**.
+
+    ---
+
+    ### Formatting Instructions:
+    - Note : Narrate like a story-teller and present like a analyst.
+    - Note : The tone of the story is strictly non-dramatic.The tone is serious and subtle.
+    - Note : The linguistic style of the story is also strictly non-dramatic. It is serious,subtle,to-the-point and concise.
+    - Note : The story's genre is adventure-thriller-mystery.
+    - The protaganist in the story is *Mr.Analyst*.
+    - The various analysis techniques and dataset insights/patterns are the supporting cast.
+    - *Mr.Dataset* can be in a positive or negative role.
+    - Use **clear headers** and **bullet points** for key details.
+    - **Bold** or *italicize* key terms for emphasis.
+    - Ensure the README is well-organized, with a logical flow.
+    - Reference charts with descriptions like "As shown below in **Figure 1**".
+    
+
+    ---
+
+    ### Data Information:
     - **Dataset filename**: `{dataset_filename}`
-    - Key Column : Overall(Categorical)
-    - Correlation detected.
+    - **Dataset description**: `{dataset_description}`
+    - **Key column exploration result**: `{key_column_exploration_result}`
+    - **Key column exploration chart**: \\ Figure 1\\
+    - **Dataset analysis result**: `{dataset_analysis_result}`
+    - **Dataset analysis chart**: \\ Figure 2 \\
 
-    **Your response should only be the content of the README.md itself.**
+    ---
+
+    **Critical Final Instructions**:
+    1. Your response should only be the content of the markdown file itself, because your response will be utilized by an automated script for further processing and creation of a 'README.md' file, otherwise the script will break.
+    2. The markdown content should be **well-structured, concise**, and **actionable** presented like an intriguing story narrated by an analyst.
+    3. Charts of Figure 1 and Figure 2 would be visible in the Data Visualizations section below and the chart links will be added by the automated script after processing. **Do not add chart links in the markdown content.
+    4. Do not reference the automated script in the markdown content.
+    4. Your response should be approximately 1500 tokens. 
     """
 
     messages = [
@@ -107,24 +170,24 @@ def generate_narrative(AIPROXY_TOKEN,
     data = {
         "model": "gpt-4o-mini",  # Can also use gpt-3.5-turbo
         "messages": messages,
-        "max_tokens": 75,  # Optional parameter to limit token usage
+        "max_tokens": 3000,  # Optional parameter to limit token usage
         "temperature" : 1.0
     }
 
     # Send the POST request to the OpenAI API via AIPROXY
-    #response = requests.post(URL, headers=headers, data=json.dumps(data))
+    response = requests.post(URL, headers=headers, data=json.dumps(data))
 
     # Check if the request was successful and return the result
-    #if response.status_code == 200:
-    #    result = response.json()
-    #    return result['choices'][0]['message']['content']
-    #else:
-    #    return None
+    if response.status_code == 200:
+        result = response.json()
+        return result['choices'][0]['message']['content']
+    else:
+        return None
 
-    return {'col_type': 'numerical', 'col_name': 'overall'}
+    #return {'col_type': 'numerical', 'col_name': 'overall'}
 
 
-#Function to resize the chart figure for saving tokens, for sending to LLM
+
 def resize_chart_for_llm(fig, new_size=(512, 512)):
     """
     Resize the saved chart figure and return it as a BytesIO object for sending to the LLM for saving tokens.
@@ -159,21 +222,21 @@ def resize_chart_for_llm(fig, new_size=(512, 512)):
         raise
 
 
-def plot_anova_result(analysis_result, key_variable):
+def plot_anova_result(dataset_analysis_result, key_column):
     """
     This function takes the ANOVA analysis result and plots a horizontal bar plot of the F-statistics for factors
     categorized as significant and non-significant. It also adjusts the plot title to reflect the key variable used
     in the analysis.
 
     Parameters:
-    - analysis_result: A dictionary containing 'Significant Factors' and 'Non-significant Factors',
+    - dataset_analysis_result: A dictionary containing 'Significant Factors' and 'Non-significant Factors',
       with F-statistic and p-value for each factor.
-    - key_variable: The categorical variable used for performing ANOVA.
+    - key_column: The categorical variable used for performing ANOVA.
     """
 
     # Flatten the ANOVA results for plotting
     plot_data = []
-    for column, stats in {**analysis_result['Significant Columns'], **analysis_result['Non-significant Columns']}.items():
+    for column, stats in {**dataset_analysis_result['1-Way ANOVA Analysis Result']['Significant Columns'], **dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns']}.items():
         plot_data.append({
             'Column': column,
             'F-statistic': round(stats[0], 2),  # F-statistic
@@ -194,8 +257,8 @@ def plot_anova_result(analysis_result, key_variable):
     ax = sns.barplot(x='F-statistic', y='Column', hue='Significance', data=df, palette={'Significant': 'green', 'Non-significant': 'gray'}, orient='h')
 
     # Title and labels
-    plt.title(f"F-statistics for 1-way ANOVA with '{key_variable}' selected as Grouping Column")
-    plt.xlabel(f"F-statistic Values for Columns (w.r.t. '{key_variable}' column)")
+    plt.title(f"F-statistics for 1-way ANOVA with '{key_column}' selected as Grouping Column")
+    plt.xlabel(f"F-statistic Values for Columns (w.r.t. '{key_column}' column)")
     plt.ylabel('Columns')
 
     # Ensure the legend always shows both 'Significant' and 'Non-significant'
@@ -215,41 +278,40 @@ def plot_anova_result(analysis_result, key_variable):
     return plt.gcf()  # Return the figure object
 
 
-# Function to create plot of Correlation analysis result
-def plot_correlation_result(analysis_result, key_variable):
+def plot_correlation_result(dataset_analysis_result, key_column):
     """
-    This function takes the correlation data (analysis_result) and plots a horizontal bar plot of correlations
+    This function takes the correlation data (dataset_analysis_result) and plots a horizontal bar plot of correlations
     with variables categorized by different categories. It displays the correlation values at the bar tips.
 
     Parameters:
-    - analysis_result: A dictionary containing categories and their corresponding correlations.
+    - dataset_analysis_result: A dictionary containing categories and their corresponding correlations.
     """
 
     # Flatten the dictionary for plotting
     plot_data = []
-    for category, correlations in analysis_result["Correlation Analysis Result"].items():
-        for variable, correlation in correlations.items():
-            plot_data.append({'Category': category, 'Variable': variable, 'Correlation': correlation})
+    for category, correlations in dataset_analysis_result["Correlation Analysis Result"].items():
+        for column, correlation in correlations.items():
+            plot_data.append({'Category': category, 'Column': column, 'Correlation': correlation})
 
     # Create a DataFrame for plotting
     df = pd.DataFrame(plot_data)
 
     # Dynamically adjust figure size based on the number of variables and categories
-    num_variables = len(df['Variable'].unique())
+    num_variables = len(df['Column'].unique())
     num_categories = len(df['Category'].unique())
 
     # Dynamically adjust figure size for horizontal bar chart
     height = min(2 + num_variables * 0.5, 12)  # Cap the height at 12
-    width = max(10, num_categories * 1.2)  # Adjust width based on number of categories
+    width = max(12, num_categories * 1.2)  # Adjust width based on number of categories
 
     figsize = (width, max(3, height))
 
     # Create the bar plot
     plt.figure(figsize=figsize)
-    ax = sns.barplot(x='Correlation', y='Variable', hue='Category', data=df, palette='coolwarm', orient='h')
+    ax = sns.barplot(x='Correlation', y='Column', hue='Category', data=df, palette='coolwarm', orient='h')
 
     # Title and labels
-    plt.title(f"Correlation Trends w.r.t. '{key_variable}' column", fontsize=16)
+    plt.title(f"Density Plot (KDE) - Correlation Trends w.r.t. '{key_column}' column", fontsize=16)
     plt.xlabel('Correlation Coefficient Value', fontsize=12)
     plt.ylabel('Columns', fontsize=12)
 
@@ -262,10 +324,10 @@ def plot_correlation_result(analysis_result, key_variable):
     plt.legend(loc='lower left', bbox_to_anchor=(1, 1), title='Correlation Categories', fontsize=10)
 
     # Move figtext outside the plot area
-    plt.figtext(0.05, 0.95, f"Mean: {analysis_result['Additional Statistics']['Mean Correlation']} | "
-                             f"Std Dev: {analysis_result['Additional Statistics']['Standard Deviation']} | "
-                             f"Skewness: {analysis_result['Additional Statistics']['Skewness']} | "
-                             f"Kurtosis: {analysis_result['Additional Statistics']['Kurtosis']}",
+    plt.figtext(0.05, 0.95, f"Mean: {dataset_analysis_result['Additional Statistics']['Mean Correlation']} | "
+                             f"Std Dev: {dataset_analysis_result['Additional Statistics']['Standard Deviation']} | "
+                             f"Skewness: {dataset_analysis_result['Additional Statistics']['Skewness']} | "
+                             f"Kurtosis: {dataset_analysis_result['Additional Statistics']['Kurtosis']}",
                 fontsize=10, ha='left', va='top', bbox=dict(facecolor='white', alpha=0.7))
 
 
@@ -277,14 +339,14 @@ def plot_correlation_result(analysis_result, key_variable):
 
 
 
-#Function to perform ANOVA if a categorical column is selected as most impactful column by LLM
-def perform_anova(data, key_variable, p_value_threshold=0.05):
+def perform_anova(data, key_column, p_value_threshold=0.05):
     """
     Perform ANOVA on the given dataset for all numeric columns, grouped by a key categorical variable.
+    Assumptions of ANOVA: normality of groups and homogeneity of variance are checked.
 
     Parameters:
     - data: Pandas DataFrame containing the dataset.
-    - key_variable: Categorical column to group data by.
+    - key_column: Categorical column to group data by.
     - p_value_threshold: Threshold to classify factors as significant or non-significant.
 
     Returns:
@@ -292,26 +354,46 @@ def perform_anova(data, key_variable, p_value_threshold=0.05):
     """
     anova_results = {}
 
-    # Check that the key_variable is in the data
-    if key_variable not in data.columns:
-        raise ValueError(f"'{key_variable}' is not a column in the DataFrame.")
-
+    # Check if dataset is empty
+    if data.empty:
+        raise ValueError("The dataset is empty. ANOVA cannot be performed on an empty dataset.")
+    
+    # Check that the key_column is in the data
+    if key_column not in data.columns:
+        raise ValueError(f"'{key_column}' is not a column in the DataFrame.")
+    
+    # Check that the key_column doesn't have missing values
+    if data[key_column].isnull().any():
+        raise ValueError(f"The '{key_column}' column contains missing values. Please clean the data.")
+    
     # Automatically get numeric columns
     numeric_columns = data.select_dtypes(include=['number']).columns.tolist()
 
     if len(numeric_columns) == 0:
-        raise ValueError("No numeric columns found in the dataset.")
+        raise ValueError("No numeric columns found in the dataset. ANOVA requires numeric data.")
 
     # Perform ANOVA for each numeric column
     for col in numeric_columns:
         # Group data by the key variable
-        groups = [group[col].dropna() for _, group in data.groupby(key_variable)]
+        groups = [group[col].dropna() for _, group in data.groupby(key_column)]
 
         # Filter out groups with fewer than two values
         groups = [group for group in groups if len(group) > 1]
 
         # Apply ANOVA only if we have at least two groups
         if len(groups) > 1:
+            # Check normality for each group using Shapiro-Wilk test
+            for i, group in enumerate(groups):
+                stat, p_value = shapiro(group)
+                if p_value < 0.05:
+                    print(f"Warning: Group {i+1} (of column '{col}') does not follow normal distribution (Shapiro-Wilk p-value: {p_value})")
+            
+            # Check homogeneity of variance using Levene's test
+            stat, p_value = levene(*groups)
+            if p_value < 0.05:
+                print(f"Warning: Homogeneity of variance assumption violated for column '{col}' (Levene's p-value: {p_value})")
+
+            # Perform the ANOVA
             f_stat, p_value = f_oneway(*groups)
             anova_results[col] = [round(f_stat, 2), round(p_value, 6)]  # Round for readability
         else:
@@ -319,37 +401,92 @@ def perform_anova(data, key_variable, p_value_threshold=0.05):
 
     # Process the ANOVA results to classify as significant or non-significant
     dataset_analysis_result = {
-        'Dataset Analysis Technique' : '1-Way ANOVA',
-        'Correlation w.r.t. Key Column' : key_variable,
-        '1-Way ANOVA Analysis Result' : { 'Significant Columns': {},
-        'Non-significant Columns': {} },
-        'Dataset Analysis Chart Figure' : "Figure 2",
-        'Dataset Analysis Chart Title' : f"1-Way ANOVA Analysis w.r.t. '{key_variable}' column",
-        'Dataset Analysis Chart Filename' : "dataset_analysis_chart.png",
-        'Plot Type of Dataset Analyis Chart': 'Horizontal Bar Plot'
+        'Dataset Analysis Technique': '1-Way ANOVA',
+        'Correlation w.r.t. Key Column': key_column,
+        '1-Way ANOVA Analysis Result': {'Significant Columns': {}, 'Non-significant Columns': {}},
+        'Dataset Analysis Chart Figure': f"Figure 2: Horizontal Bar Plot - 1-Way ANOVA Analysis w.r.t. '{key_column}' column",
+        'Dataset Analysis Chart Title': f"1-Way ANOVA Analysis w.r.t. '{key_column}' column",
+        'Dataset Analysis Chart Filename': "dataset_analysis_chart.png",
+        'Plot Type of Dataset Analysis Chart': 'Horizontal Bar Plot'
     }
 
-
+    # Process the results and classify them
     for col, result in anova_results.items():
         if result == ['Error', 'Not enough data']:
-            dataset_analysis_result ['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = result
+            dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = result
         else:
             f_stat, p_value = result
             if p_value <= p_value_threshold:
-                dataset_analysis_result ['1-Way ANOVA Analysis Result']['Significant Columns'][col] = [f_stat, p_value]
+                dataset_analysis_result['1-Way ANOVA Analysis Result']['Significant Columns'][col] = [f_stat, p_value]
             else:
-                dataset_analysis_result ['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = [f_stat, p_value]
+                dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = [f_stat, p_value]
 
     return dataset_analysis_result
 
-def perform_correlation(data, key_variable):
-    # Ensure the key_variable and other columns are numeric
-    numeric_columns = data.select_dtypes(include=['number']).columns.tolist()
-    if key_variable not in numeric_columns:
-        raise ValueError(f"The key_variable '{key_variable}' must be a numeric column.")
+
+def perform_correlation(df, key_column):
+    """
+    Performs correlation analysis on a DataFrame with respect to a specified key column.
+
+    This function calculates the correlation between the specified `key_column` and all other numeric columns in the dataset. It classifies the correlations into five categories based on predefined thresholds:
+    - Strong Positive
+    - Moderate Positive
+    - Weak Correlations
+    - Moderate Negative
+    - Strong Negative
+
+    Additionally, the function computes and returns a set of descriptive statistics for the correlations (excluding the key column itself), such as mean, standard deviation, median, range, skewness, and kurtosis.
+
+    Parameters:
+    ----------
+    df : pandas.DataFrame
+        The input DataFrame containing numeric columns for correlation analysis.
+
+    key_column : str
+        The name of the column to analyze the correlation with. This column must be numeric.
+
+    Returns:
+    -------
+    dict
+        A dictionary containing the following keys:
+        - 'Dataset Analysis Technique': The analysis technique used (i.e., "Correlation Analysis").
+        - 'Correlation w.r.t. Key Column': The name of the key column.
+        - 'Correlation Analysis Result': A dictionary containing the categorized correlations for each variable.
+        - 'Dataset Analysis Chart Figure': A placeholder figure name (e.g., "Figure 2").
+        - 'Dataset Analysis Chart Title': The title for the plot generated for correlation analysis.
+        - 'Dataset Analysis Chart Filename': The filename for saving the plot (e.g., 'dataset_analysis_chart.png').
+        - 'Plot Type of Dataset Analysis Chart': The type of plot generated (i.e., 'Horizontal Bar Plot').
+        - 'Additional Statistics': A dictionary containing descriptive statistics for the correlations, including:
+            - Mean Correlation
+            - Standard Deviation
+            - Median Correlation
+            - Range of Correlations
+            - Skewness
+            - Kurtosis
+
+    Notes:
+    ------
+    - The correlation is computed using Pearson’s method.
+    - The correlations are classified into categories based on the following thresholds:
+        - Strong Positive: ≥ 0.75
+        - Moderate Positive: ≥ 0.50
+        - Moderate Negative: ≤ -0.50
+        - Strong Negative: ≤ -0.75
+        - Weak Correlations: Between -0.50 and 0.50
+    - If no correlations are available (i.e., no other numeric columns are present), an error message will be returned.
+
+    Example:
+    --------
+    result = perform_correlation(df, 'target_column')
+    print(result['Correlation Analysis Result'])
+    """
+    # Ensure the key_column and other columns are numeric
+    numeric_columns = df.select_dtypes(include=['number']).columns.tolist()
+    if key_column not in numeric_columns:
+        raise ValueError(f"The key_column '{key_column}' must be a numeric column.")
 
     # Compute correlation of the key variable with all numeric variables
-    correlations = data[numeric_columns].corr()[key_variable].sort_values(ascending=False)
+    correlations = df[numeric_columns].corr()[key_column].sort_values(ascending=False)
 
     # Initialize the structure for significant correlations
     significant_correlations = {
@@ -365,7 +502,7 @@ def perform_correlation(data, key_variable):
 
     # Classify correlations
     for variable, correlation in correlations.items():
-        if variable == key_variable:
+        if variable == key_column:
             continue
         if correlation >= thresholds["strong_positive"]:
             significant_correlations["Strong Positive"][variable] = round(correlation, 2)
@@ -379,7 +516,7 @@ def perform_correlation(data, key_variable):
             significant_correlations["Weak Correlations"][variable] = round(correlation, 2)
 
     # Exclude the key variable itself for descriptive statistics
-    correlations_without_key = correlations.drop(key_variable, errors='ignore')
+    correlations_without_key = correlations.drop(key_column, errors='ignore')
     if correlations_without_key.empty:
         return {"Error": "No correlations available for analysis."}
 
@@ -394,10 +531,10 @@ def perform_correlation(data, key_variable):
     # Add the plot type and statistics to the result
     dataset_analysis_result = {
         'Dataset Analysis Technique': 'Correlation Analysis',
-        'Correlation w.r.t. Key Column': key_variable,
+        'Correlation w.r.t. Key Column': key_column,
         'Correlation Analysis Result': significant_correlations,
-        'Dataset Analysis Chart Figure' : "Figure 2",
-        'Dataset Analysis Chart Title': f"Correlation Analysis w.r.t. '{key_variable}' column",
+        'Dataset Analysis Chart Figure' : f"Figure 2 : Horizontal Bar Plot - Correlation Analysis w.r.t. '{key_column}' column",
+        'Dataset Analysis Chart Title': f"Correlation Analysis w.r.t. '{key_column}' column",
         'Dataset Analysis Chart Filename': "dataset_analysis_chart.png",
         'Plot Type of Dataset Analysis Chart': 'Horizontal Bar Plot',
         'Additional Statistics': {
@@ -413,16 +550,15 @@ def perform_correlation(data, key_variable):
     return dataset_analysis_result
 
 
-
-def clean_data_for_analysis(df, key_variable_type, key_variable):
+def clean_data_for_analysis(df, key_column_type, key_column):
     """
     Clean and preprocess the dataset based on the key variable type.
     Includes filtering useful categorical columns for correlation analysis.
 
     Parameters:
     - df (pd.DataFrame): Input dataset.
-    - key_variable (str): Column to treat as the key variable.
-    - key_variable_type (str): Type of key variable ('numerical' or 'categorical').
+    - key_column (str): Column to treat as the key variable.
+    - key_column_type (str): Type of key variable ('numerical' or 'categorical').
 
     Returns:
     - df_preprocessed (pd.DataFrame): Cleaned DataFrame ready for analysis.
@@ -435,17 +571,6 @@ def clean_data_for_analysis(df, key_variable_type, key_variable):
     # 2. Handle Outliers (optional)
     df_preprocessed = handle_outliers(df_preprocessed)
 
-    '''
-    # 3. Filter useful categorical columns
-    useful_cats = filter_categorical_columns(df_preprocessed)
-
-    # 4. Encode useful categorical columns
-    df_preprocessed = encode_categorical_columns(df_preprocessed, exclude_column=key_variable, one_hot=False)
-
-    # 5. Ensure key variable handling
-    if key_variable_type == "categorical" and key_variable in useful_cats:
-        df_preprocessed[key_variable] = LabelEncoder().fit_transform(df_preprocessed[key_variable].astype(str))
-    '''
 
     return df_preprocessed
 
@@ -485,7 +610,7 @@ def handle_outliers(df, z_threshold=3):
     Returns:
     - df (pd.DataFrame): Dataframe with outliers removed or capped.
     """
-    from scipy import stats
+
     numerical_cols = df.select_dtypes(include=['number']).columns
 
     # Calculate Z-scores for numerical columns
@@ -497,19 +622,43 @@ def handle_outliers(df, z_threshold=3):
     return df_cleaned
 
 
-def plot_key_column_exploration_chart(df, col_type, col_name):
+def key_column_exploration_result_and_plot(df, col_type, col_name):
     """
-    Function to analyze and plot a column from a dataframe based on the type of the column.
+    Analyzes and visualizes a specified column from the dataframe based on its type (numerical or categorical).
+
+    This function generates a plot and statistical summary for a given column:
+    - If the column is **numerical**, it generates a **Density Plot (KDE)** to visualize the distribution of values.
+    - If the column is **categorical**, it generates a **Frequency Count Bar Chart** to visualize the distribution of categories.
+
+    The function also returns a dictionary containing statistical insights and the plot. The statistics differ based on the column type.
 
     Parameters:
-    df (pd.DataFrame): The input dataframe.
-    col_type (str): Type of the column ('numerical' or 'categorical').
+    ----------
+    df (pd.DataFrame): The input dataframe containing the data.
+    col_type (str): The type of the column to analyze ('numerical' or 'categorical').
     col_name (str): The name of the column to analyze.
 
-    Generates:
-    - If the column is numerical: A Density Plot (KDE).
-    - If the column is categorical: A Frequency Count Bar Chart.
-    - Returns a dictionary with relevant statistics and description.
+    Returns:
+    -------
+    dict: A dictionary with the following keys:
+        - 'Key Column Name': The name of the analyzed column.
+        - 'Key Column Type': The type of the column ('Numerical' or 'Categorical').
+        - 'Key Column Exploration Chart Figure': A placeholder figure name (e.g., "Figure 1").
+        - 'Key Column Exploration Chart Title': The title for the plot.
+        - 'Key Column Exploration Chart Filename': The filename for saving the plot (e.g., 'key_column_exploration_chart.png').
+        - 'plot_type': The type of plot generated ('Density Plot (KDE)' or 'Frequency Count Bar Chart').
+        - Statistics:
+            - For numerical columns: 'mean', 'median', 'std_dev', 'skewness', 'kurtosis', 'min_value', 'max_value', 'quantiles', 'normality_test'.
+            - For categorical columns: 'unique_values', 'value_counts', 'mode', 'missing_values', 'missing_percentage'.
+    plt.Figure: The generated plot figure object (from `plt.gcf()`), which can be saved or displayed.
+
+    Notes:
+    ------
+    - If the column type is unknown, the function prints an error message and returns `None`.
+    - The function assumes that the provided `col_name` exists in the dataframe.
+    - The plot is either a **Density Plot** for numerical columns or a **Bar Chart** for categorical columns.
+    - Missing values are handled in categorical columns by providing the count and percentage of missing data.
+
     """
     # Check if the column exists in the dataframe
     if col_name not in df.columns:
@@ -518,7 +667,7 @@ def plot_key_column_exploration_chart(df, col_type, col_name):
 
     # Extract the column data
     column_data = df[col_name]
-    description = {}
+    result = {}
 
     # Check if the column is numerical
     if col_type == 'numerical':
@@ -530,29 +679,27 @@ def plot_key_column_exploration_chart(df, col_type, col_name):
         plt.ylabel("Density")
         plt.grid(True)
 
-        # Generate description for numerical column
-        description['Key Column Name'] = col_name
-        description['Key Column Type'] = 'Numerical'
+        # Generate result for numerical column
+        result['Key Column Name'] = col_name
+        result['Key Column Type'] = 'Numerical'
         # Key Column Exploration Chart
-        description['Key Column Exploration Chart Figure'] = "Figure 1"
-        description['Key Column Exploration Chart Title'] = f"Density Plot - Distribution of '{col_name}' Column Values"
-        description['Key Column Exploration Chart Filename'] = 'key_column_exploration_chart.png'
-        description['plot_type'] = 'Density Plot (KDE)'
+        result['Key Column Exploration Chart Figure'] = f"Figure 1 : Density Plot - Distribution of '{col_name}' Column Values"
+        result['Key Column Exploration Chart Title'] = f"Density Plot (KDE) - Distribution of '{col_name}' Column Values"
+        result['Key Column Exploration Chart Filename'] = 'key_column_exploration_chart.png'
+        result['plot_type'] = 'Density Plot (KDE)'
         # Statistics
-        description['mean'] = round(column_data.mean(),2)
-        description['median'] = round(column_data.median(),2)
-        description['std_dev'] = round(column_data.std(),3)
-        description['skewness'] = round(column_data.skew(),3)
-        description['kurtosis'] = round(column_data.kurtosis(),3)
-        description['min_value'] = round(column_data.min(),3)
-        description['max_value'] = round(column_data.max(),3)
-        description['quantiles'] = column_data.quantile([0.25, 0.5, 0.75]).to_dict()
+        result['mean'] = round(column_data.mean(), 2)
+        result['median'] = round(column_data.median(), 2)
+        result['std_dev'] = round(column_data.std(), 3)
+        result['skewness'] = round(column_data.skew(), 3)
+        result['kurtosis'] = round(column_data.kurtosis(), 3)
+        result['min_value'] = round(column_data.min(), 3)
+        result['max_value'] = round(column_data.max(), 3)
+        result['quantiles'] = column_data.quantile([0.25, 0.5, 0.75]).to_dict()
         # Additional statistical test (if needed)
-        description['normality_test'] = round(stats.normaltest(column_data.dropna()).pvalue,5)
+        result['normality_test'] = round(stats.normaltest(column_data.dropna()).pvalue, 5)
 
-
-
-        return plt.gcf(), description
+        return result, plt.gcf()
 
     # Check if the column is categorical
     elif col_type == 'categorical':
@@ -565,40 +712,53 @@ def plot_key_column_exploration_chart(df, col_type, col_name):
         plt.xticks(rotation=45, ha='right')  # Rotate labels if necessary
         plt.grid(True)
 
-        # Generate description for categorical column
-        description['Key Column Name'] = col_name
-        description['Key Column Type'] = 'Categorical'
+        # Generate result for categorical column
+        result['Key Column Name'] = col_name
+        result['Key Column Type'] = 'Categorical'
         # Key Column Exploration Chart
-        description['Key Column Exploration Chart Figure'] = "Figure 1"
-        description['Key Column Exploration Chart Title'] = f"Frequency Count of '{col_name}' Column"
-        description['Key Column Exploration Chart Filename'] = 'key_column_exploration_chart.png'
-        description['plot_type'] = 'Frequency Count Bar Chart'
+        result['Key Column Exploration Chart Figure'] = f"Figure 1 : Frequency Count Bar Chart - Frequency Count of '{col_name}' Column"
+        result['Key Column Exploration Chart Title'] = f"Frequency Count of '{col_name}' Column"
+        result['Key Column Exploration Chart Filename'] = 'key_column_exploration_chart.png'
+        result['plot_type'] = 'Frequency Count Bar Chart'
         # Statistics
-        description['unique_values'] = column_data.nunique()
-        description['value_counts'] = column_data.value_counts().to_dict()
-        description['mode'] = column_data.mode().iloc[0]
-        description['missing_values'] = column_data.isnull().sum()
-        description['missing_percentage'] = column_data.isnull().mean() * 100
+        result['unique_values'] = column_data.nunique()
+        result['value_counts'] = column_data.value_counts().to_dict()
+        result['mode'] = column_data.mode().iloc[0]
+        result['missing_values'] = column_data.isnull().sum()
+        result['missing_percentage'] = column_data.isnull().mean() * 100
 
-        return plt.gcf(), description
+        return result, plt.gcf()
 
     else:
         print(f"Unknown column type '{col_type}' for '{col_name}'.")
         return None, None
 
-# This function asks the LLM to select the most impactful column from the dataset to guide the analysis.
+
 def select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description) :
     """
-    Selects the most impactful key column from the dataset to analyze, discover patterns, and gain insights.
+    Selects the most impactful key column from the dataset to analyze, leveraging the LLM (Large Language Model) for insight generation.
+
+    This function sends a request to an LLM-based service, providing the dataset's description, to ask the model to identify
+    the column that is most likely to have the greatest impact on the analysis. The selected column will guide further analysis
+    and help uncover important patterns or relationships in the data.
 
     Parameters:
-    - AIPROXY_TOKEN (str): The token used for authentication with the AIPROXY service.
-    - URL (str): The endpoint URL for sending the request to the API.
-    - dataset_description (str): A string containing the summary or description of the dataset.
+    ----------
+    AIPROXY_TOKEN (str): The token used for authentication with the AIPROXY service.
+    URL (str): The endpoint URL for sending the request to the API.
+    dataset_filename (str): The name of the dataset file (used for reference in the request).
+    dataset_description (str): A string containing a summary or description of the dataset, including column types, missing values, etc.
 
     Returns:
-    - str: The name of the most impactful key column selected from the dataset.
-    - None: If the selection fails or there is an error.
+    -------
+    str: The name of the most impactful key column selected by the LLM, based on the dataset description.
+    None: If the LLM fails to select a key column or there is an error with the request/response.
+
+    Notes:
+    ------
+    - The function relies on an LLM (Large Language Model) to understand the dataset description and make an informed decision
+      about the most important column for analysis.
+    - The accuracy of the selection depends on the quality of the description and the LLM's ability to interpret it.
     """
 
     # Set the headers with the token
@@ -635,24 +795,47 @@ def select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description)
     data = {
         "model": "gpt-4o-mini",  # Can also use gpt-3.5-turbo
         "messages": messages,
-        "max_tokens": 25  # Optional parameter to limit token usage
+        "max_tokens": 25,  # Optional parameter to limit token usage
+        "temperature" : 0.0
     }
 
     # Send the POST request to the OpenAI API via AIPROXY
-    #response = requests.post(URL, headers=headers, data=json.dumps(data))
+    response = requests.post(URL, headers=headers, data=json.dumps(data))
 
     # Check if the request was successful and return the result
-    #if response.status_code == 200:
-    #    result = response.json()
-    #    return result['choices'][0]['message']['content']
-    #else:
-    #    return None
-
-    return str({'col_type': 'numerical', 'col_name': 'overall'})
+    if response.status_code == 200:
+        result = response.json()
+        return result['choices'][0]['message']['content']
+    else:
+        return None
 
 
-# Function to generate the dataset_description with missing values and unique values
 def generate_dataset_description(df):
+    """
+    Generate a description of the dataset, including details about its columns, missing values, and columns with few unique values.
+
+    This function analyzes the provided Pandas DataFrame and generates a textual description summarizing:
+    - The number of rows and columns.
+    - The numeric and categorical columns.
+    - The percentage of missing values for each column.
+    - Columns with fewer than a defined threshold of unique values (default 20), which may be useful for categorization or ANOVA analysis.
+
+    Parameters:
+    ----------
+    df : pandas.DataFrame
+        The input dataset for which the description will be generated.
+
+    Returns:
+    -------
+    str
+        A string containing a summary of the dataset's structure, including information about column types,
+        missing values, and columns with few unique values.
+
+    Notes:
+    ------
+    - The threshold for "few unique values" is set to 20 by default, but can be adjusted in the code if necessary.
+    - The function assumes that the dataset contains columns with either numeric or object data types.
+    """
 
     # Get columns and their data types
     column_info = df.dtypes
@@ -698,32 +881,56 @@ def generate_dataset_description(df):
     return dataset_description
 
 
-#Load the dataset as a Pandas dataframe
-def load_dataset(filename):
-    encodings_to_try = ['utf-8', 'ISO-8859-1', 'latin1', 'cp1252']
+def save_and_resize_charts(key_column_exploration_result, dataset_analysis_result, key_column_exploration_chart, dataset_analysis_chart):
+    """Function to save charts and resize them for LLM."""
+    # Save charts
+    key_column_exploration_chart.savefig("key_column_exploration_chart")
+    dataset_analysis_chart.savefig("dataset_analysis_chart", bbox_inches='tight')
 
+    # Resize charts for LLM
+    key_column_exploration_chart_for_LLM = resize_chart_for_llm(key_column_exploration_chart)
+    dataset_analysis_chart_for_LLM = resize_chart_for_llm(dataset_analysis_chart)
+
+    return key_column_exploration_chart_for_LLM, dataset_analysis_chart_for_LLM
+
+
+def load_and_validate_dataset():
+    """Loads the dataset from a file, validates the filename, and handles encodings."""
+
+    # Check if dataset filename is provided in command-line and load the dataset file
+    if len(sys.argv) < 2:
+        print("Provide CSV filename")
+        return None, None  # Return None if filename is not provided
+
+    dataset_filename = sys.argv[1]
+
+    # Try loading the dataset using different encodings
+    encodings_to_try = ['utf-8', 'ISO-8859-1', 'latin1', 'cp1252']
     for encoding in encodings_to_try:
         try:
-            df = pd.read_csv(filename, encoding=encoding)
+            df = pd.read_csv(dataset_filename, encoding=encoding)
             print(f"Successfully read the file with encoding: {encoding}")
-            return df
-        except Exception as e:
-            print(f"Error reading {filename} with encoding {encoding}: {e}")
+            
+            # Check if the dataset is empty
+            if df.empty:
+                print(f"Warning: The dataset '{dataset_filename}' is empty.")
+                return None, dataset_filename  # Return None if dataset is empty
 
-    print(f"Failed to read {filename} with multiple encodings.")
-    return None
+            return df, dataset_filename  # Return the dataframe and filename upon success
+        except Exception as e:
+            print(f"Error reading {dataset_filename} with encoding {encoding}: {e}")
+
+    # If all attempts fail, print an error message
+    print(f"Failed to read {dataset_filename} with multiple encodings.")
+    return None, dataset_filename  # Return None if all encodings fail
 
 
 def main():
 
-    #Check if dataset filename is provided in command-line and load the dataset file
-    if len(sys.argv) < 2:
-        print("Provide CSV filename")
-    else:
-        dataset_filename = sys.argv[1]
-        df = load_dataset(dataset_filename)
-        if df is not None:
-            print(f'{dataset_filename} df created.')
+    # Load and validate dataset
+    df, dataset_filename = load_and_validate_dataset()
+    if df is None:
+        return
 
 
     dataset_description = generate_dataset_description(df)
@@ -737,48 +944,38 @@ def main():
 
 
     if key_column['col_type'] == 'numerical' :
-        #%matplotlib agg
-        key_column_exploration_chart, key_column_exploration = plot_key_column_exploration_chart(df, key_column['col_type'],key_column['col_name'])
+        key_column_exploration_result, key_column_exploration_chart = key_column_exploration_result_and_plot(df, key_column['col_type'],key_column['col_name'])
         df_preprocessed = clean_data_for_analysis(df, key_column['col_type'], key_column['col_name'])
         dataset_analysis_result = perform_correlation(df_preprocessed,key_column['col_name'])
-        #%matplotlib agg
         dataset_analysis_chart = plot_correlation_result(dataset_analysis_result,key_column['col_name'])
     else :
-        #%matplotlib agg
-        key_column_exploration_chart,key_column_exploration = plot_key_column_exploration_chart(df, key_column['col_type'],key_column['col_name'])
-        df_preprocessed = clean_data_for_analysis(df_preprocessed, key_column['col_type'], key_column['col_name'])
+        key_column_exploration_result, key_column_exploration_chart = key_column_exploration_result_and_plot(df, key_column['col_type'],key_column['col_name'])
+        df_preprocessed = clean_data_for_analysis(df, key_column['col_type'], key_column['col_name'])
         dataset_analysis_result = perform_anova(df,key_column['col_name'])
-        #%matplotlib agg
         dataset_analysis_chart = plot_anova_result(dataset_analysis_result,key_column['col_name'])
 
-    key_column_exploration_chart.savefig("key_column_exploration_chart")
-    dataset_analysis_chart.savefig("dataset_analysis_chart",bbox_inches = 'tight' )
+    # Generate and save charts for LLM
+    key_column_exploration_chart_for_LLM, dataset_analysis_chart_for_LLM = save_and_resize_charts(key_column_exploration_result, dataset_analysis_result, key_column_exploration_chart, dataset_analysis_chart)
 
-    key_column_exploration_chart_for_LLM = resize_chart_for_llm(key_column_exploration_chart)
-    dataset_analysis_chart_for_LLM = resize_chart_for_llm(dataset_analysis_chart)
 
     #Call LLM for to get story
-    story = f"""# Media Analysis Report
-
-## Introduction
-
-In this report, we explore a dataset containing various media-related variables that allow us to analyze how different factors correlate with the overall ratings of media items. The primary goal is to uncover relationships that could enhance our understanding and strategy within media production, marketing, and consumption.
-
-## Dataset Overview
-
-- **Filename**: '{dataset_filename}'
-"""
+    story = generate_story(AIPROXY_TOKEN,
+                           URL,
+                           dataset_filename,
+                           dataset_description,
+                           key_column_exploration_result,
+                           dataset_analysis_result)
 
 
     # Collect Chart Filenames for embedding in README
     charts = []
-    chart_fig = key_column_exploration['Key Column Exploration Chart Figure']
-    chart_name = key_column_exploration['Key Column Exploration Chart Filename']
+    chart_fig = key_column_exploration_result['Key Column Exploration Chart Figure']
+    chart_name = key_column_exploration_result['Key Column Exploration Chart Filename']
     charts.append([chart_fig, chart_name])
     chart_fig = dataset_analysis_result['Dataset Analysis Chart Figure']
     chart_name = dataset_analysis_result['Dataset Analysis Chart Filename']
     charts.append([chart_fig, chart_name])
-    
+
 
     # Combine the story and charts for embedding in README
     readme = generate_readme(story, charts)
@@ -792,14 +989,14 @@ In this report, we explore a dataset containing various media-related variables 
 
     return (dataset_filename,df, dataset_description, key_column,
             dataset_analysis_result, dataset_analysis_chart,
-            key_column_exploration_chart, key_column_exploration,
+            key_column_exploration_result, key_column_exploration_chart,
             key_column_exploration_chart_for_LLM, dataset_analysis_chart_for_LLM,
             readme, df_preprocessed)
 
 if __name__ == "__main__":
     (dataset_filename,df, dataset_description, key_column,
     dataset_analysis_result, dataset_analysis_chart,
-    key_column_exploration_chart, key_column_exploration,
+    key_column_exploration_result, key_column_exploration_chart,
     key_column_exploration_chart_for_LLM, dataset_analysis_chart_for_LLM,
     readme, df_preprocessed
     ) = main()
