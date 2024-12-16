@@ -865,6 +865,62 @@ def select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description)
     else:
         return None
 
+def fallback_select_key_column(df):
+    """
+    Selects the most impactful categorical column in a DataFrame based on two criteria:
+    - The column with the least unique values.
+    - The column with the highest number of missing (null) values.
+
+    The function evaluates each categorical column by combining the number of unique values and missing values. 
+    It selects the column that minimizes the sum of these two factors, assuming that the most impactful column
+    will have the least complexity (fewer unique values) and will be missing data that could influence analysis.
+
+    Parameters:
+    ----------
+    df : pandas.DataFrame
+        The input DataFrame from which the most impactful categorical column will be selected.
+
+    Returns:
+    -------
+    dict
+        A dictionary containing the type and name of the most impactful categorical column.
+        The format is:
+        {'col_type': 'categorical', 'col_name': 'name_of_column'}
+
+    Notes:
+    ------
+    - The function focuses on categorical columns (columns with dtype 'object').
+    - The column selection process uses the sum of unique values and missing values as a metric for "impact".
+    - If there are no categorical columns in the DataFrame, the function will return `None`.
+
+    Example:
+    --------
+    df = pd.DataFrame({
+        'type': ['A', 'B', 'A', None, 'C'],
+        'category': ['X', 'Y', 'Y', 'X', 'Z'],
+        'value': [10, 20, 30, 40, 50]
+    })
+    
+    result = fallback_select_key_column(df)
+    print(result)
+    # Output: {'col_type': 'categorical', 'col_name': 'type'}
+    """
+    categorical_columns = df.select_dtypes(include=['object']).columns
+    
+    best_column = None
+    best_score = float('inf')  # To track the column with least unique values + missing values
+
+    for col in categorical_columns:
+        unique_values = df[col].nunique()
+        missing_values = df[col].isnull().sum()
+        score = unique_values + missing_values  # Combine both factors to select the most impactful column
+
+        if best_column is None or score < best_score:
+            best_column = col
+            best_score = score
+
+    return {'col_type': 'categorical', 'col_name': best_column}
+
 
 def generate_dataset_description(df):
     """
@@ -995,8 +1051,23 @@ def main():
     key_column_string = str(select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description))
     print("key_column", key_column_string)
 
-    # Convert the string to a dictionary
-    key_column = ast.literal_eval(key_column_string)
+    # Check if the result is None (represented as string "None") or empty
+    if key_column_string == "None" or not key_column_string.strip():
+        print("No key column selected, falling back to default column.")
+        # Use fallback if no valid key column was returned
+        key_column = fallback_select_key_column(df)
+    else:
+        print("key_column_string", key_column_string)
+    
+        # Convert the string to a dictionary using ast.literal_eval
+        try:
+            key_column = ast.literal_eval(key_column_string)
+        except ValueError as e:
+            print(f"Error while parsing key column: {e}")
+            key_column = fallback_select_key_column(df)  # fallback if parsing fails
+    
+    # Print the selected key column
+    print("Selected key column:", key_column)
 
 
     if key_column['col_type'] == 'numerical' :
