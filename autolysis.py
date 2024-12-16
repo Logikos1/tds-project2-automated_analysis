@@ -31,6 +31,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import LabelEncoder
 import numpy as np
 import ast
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 
 # Setup code: Retrieve the AIPROXY token and construct the OpenAI API endpoint URL
