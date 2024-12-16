@@ -9,6 +9,7 @@
 #   "Pillow",         # For image processing (PIL module)
 #   "requests",       # For making HTTP requests
 #   "numpy",          # For numerical operations
+#   "tenacity",       # For retry logic
 # ]
 # ///
 
@@ -18,7 +19,7 @@ import pandas as pd
 import requests
 import json
 from scipy import stats
-from scipy.stats import f_oneway, shapiro, levene
+from scipy.stats import f_oneway
 from PIL import Image
 from io import BytesIO
 import matplotlib
@@ -52,7 +53,8 @@ if not AIPROXY_TOKEN:
 
 
 
-
+# Retry decorator to handle transient errors using tenacity
+@retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(5))
 def generate_readme(story, charts):
     """
     Generates a README file content by combining a given story and a list of charts.
@@ -414,7 +416,6 @@ def plot_correlation_result(dataset_analysis_result, key_column):
 def perform_anova(data, key_column, p_value_threshold=0.05):
     """
     Perform ANOVA on the given dataset for all numeric columns, grouped by a key categorical variable.
-    Assumptions of ANOVA: normality of groups and homogeneity of variance are checked.
 
     Parameters:
     - data: Pandas DataFrame containing the dataset.
@@ -426,23 +427,15 @@ def perform_anova(data, key_column, p_value_threshold=0.05):
     """
     anova_results = {}
 
-    # Check if dataset is empty
-    if data.empty:
-        raise ValueError("The dataset is empty. ANOVA cannot be performed on an empty dataset.")
-    
     # Check that the key_column is in the data
     if key_column not in data.columns:
         raise ValueError(f"'{key_column}' is not a column in the DataFrame.")
-    
-    # Check that the key_column doesn't have missing values
-    if data[key_column].isnull().any():
-        raise ValueError(f"The '{key_column}' column contains missing values. Please clean the data.")
-    
+
     # Automatically get numeric columns
     numeric_columns = data.select_dtypes(include=['number']).columns.tolist()
 
     if len(numeric_columns) == 0:
-        raise ValueError("No numeric columns found in the dataset. ANOVA requires numeric data.")
+        raise ValueError("No numeric columns found in the dataset.")
 
     # Perform ANOVA for each numeric column
     for col in numeric_columns:
@@ -454,18 +447,6 @@ def perform_anova(data, key_column, p_value_threshold=0.05):
 
         # Apply ANOVA only if we have at least two groups
         if len(groups) > 1:
-            # Check normality for each group using Shapiro-Wilk test
-            for i, group in enumerate(groups):
-                stat, p_value = shapiro(group)
-                if p_value < 0.05:
-                    print(f"Warning: Group {i+1} (of column '{col}') does not follow normal distribution (Shapiro-Wilk p-value: {p_value})")
-            
-            # Check homogeneity of variance using Levene's test
-            stat, p_value = levene(*groups)
-            if p_value < 0.05:
-                print(f"Warning: Homogeneity of variance assumption violated for column '{col}' (Levene's p-value: {p_value})")
-
-            # Perform the ANOVA
             f_stat, p_value = f_oneway(*groups)
             anova_results[col] = [round(f_stat, 2), round(p_value, 6)]  # Round for readability
         else:
@@ -473,25 +454,26 @@ def perform_anova(data, key_column, p_value_threshold=0.05):
 
     # Process the ANOVA results to classify as significant or non-significant
     dataset_analysis_result = {
-        'Dataset Analysis Technique': '1-Way ANOVA',
-        'Correlation w.r.t. Key Column': key_column,
-        '1-Way ANOVA Analysis Result': {'Significant Columns': {}, 'Non-significant Columns': {}},
-        'Dataset Analysis Chart Figure': f"Figure 2: Horizontal Bar Plot - 1-Way ANOVA Analysis w.r.t. '{key_column}' column",
-        'Dataset Analysis Chart Title': f"1-Way ANOVA Analysis w.r.t. '{key_column}' column",
-        'Dataset Analysis Chart Filename': "dataset_analysis_chart.png",
-        'Plot Type of Dataset Analysis Chart': 'Horizontal Bar Plot'
+        'Dataset Analysis Technique' : '1-Way ANOVA',
+        'Correlation w.r.t. Key Column' : key_column,
+        '1-Way ANOVA Analysis Result' : { 'Significant Columns': {},
+        'Non-significant Columns': {} },
+        'Dataset Analysis Chart Figure' : f"Figure 2 : Horizontal Bar Plot -  1-Way ANOVA Analysis w.r.t. '{key_column}' column",
+        'Dataset Analysis Chart Title' : f"1-Way ANOVA Analysis w.r.t. '{key_column}' column",
+        'Dataset Analysis Chart Filename' : "dataset_analysis_chart.png",
+        'Plot Type of Dataset Analyis Chart': 'Horizontal Bar Plot'
     }
 
-    # Process the results and classify them
+
     for col, result in anova_results.items():
         if result == ['Error', 'Not enough data']:
-            dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = result
+            dataset_analysis_result ['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = result
         else:
             f_stat, p_value = result
             if p_value <= p_value_threshold:
-                dataset_analysis_result['1-Way ANOVA Analysis Result']['Significant Columns'][col] = [f_stat, p_value]
+                dataset_analysis_result ['1-Way ANOVA Analysis Result']['Significant Columns'][col] = [f_stat, p_value]
             else:
-                dataset_analysis_result['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = [f_stat, p_value]
+                dataset_analysis_result ['1-Way ANOVA Analysis Result']['Non-significant Columns'][col] = [f_stat, p_value]
 
     return dataset_analysis_result
 
@@ -805,7 +787,8 @@ def key_column_exploration_result_and_plot(df, col_type, col_name):
         print(f"Unknown column type '{col_type}' for '{col_name}'.")
         return None, None
 
-
+# Retry decorator to handle transient errors using tenacity
+@retry(wait=wait_exponential(min=1, max=10), stop=stop_after_attempt(5))
 def select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description) :
     """
     Selects the most impactful key column from the dataset to analyze, leveraging the LLM (Large Language Model) for insight generation.
@@ -1008,7 +991,7 @@ def main():
     dataset_description = generate_dataset_description(df)
     print("In main, data descp" , dataset_description)
 
-    key_column_string = select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description)
+    key_column_string = str(select_key_column(AIPROXY_TOKEN, URL, dataset_filename, dataset_description))
     print("key_column", key_column_string)
 
     # Convert the string to a dictionary
