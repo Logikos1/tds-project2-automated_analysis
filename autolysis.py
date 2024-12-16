@@ -83,8 +83,8 @@ def generate_readme(story, charts):
     readme = generate_readme(story, charts)
     print(readme)
     """
-
-    readme = story
+    readme = ""
+    readme += story
 
     #Include Visuals
     readme += "\n# Data Visualizations\n"
